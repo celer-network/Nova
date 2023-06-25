@@ -129,8 +129,10 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 	type G = pasta_curves::pallas::Point;
         let constants = PoseidonConstantsCircuit::new();
 	// let num_absorbs = 32;
-	let num_absorbs = 1;//z_out.len();
+	// let num_absorbs = 1;//z_out.len();
+	let num_absorbs = z_out.len();
 	let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone(), num_absorbs);
+	// Error (Goal 3: add Poseidon)
 	// ro.absorb(z_out[0]);
 	//for i in 0..num_absorbs {
 	//    // ro.absorb(z_out[i]);
@@ -234,8 +236,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
       })
     .collect::<Vec<_>>();
     */
-    /*    
-    */
+    // Error (Goal 1: produce SNARK for multiple steps)
     let mut group = c.benchmark_group(format!("NovaProve-Sha256-message-len-{}", circuit_primary.preimage.len()));
     group.sample_size(10);
     group.bench_function("Prove", |b| {
