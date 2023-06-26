@@ -43,11 +43,8 @@ use neptune::{
 };
 use nova_snark::provider::poseidon::PoseidonRO;
 use nova_snark::provider::poseidon::PoseidonConstantsCircuit;
-//use ::bellperson::solver::SatisfyingAssignment;
-//    constants::NUM_CHALLENGE_BITS,
-//    gadgets::utils::le_bits_to_num,
 
-const NITERATIONS: usize = 2;
+const NITERATIONS: usize = 1;
 
 #[derive(Clone, Debug)]
 struct Sha256CircuitOrig<Scalar: PrimeField> {
@@ -90,7 +87,7 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 	let niterations: usize = NITERATIONS;
 	let hash_bits = sha256iterated(cs.namespace(|| "sha256"), &preimage_bits, niterations)?;
 
-	println!("hash_bits length {:?}", hash_bits.len());
+	// println!("hash_bits length {:?}", hash_bits.len());
 
 	let i: usize = 0;
 	let hash_bits_slice = &hash_bits[i];
@@ -121,6 +118,7 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 	}
 
 	// apply Poseidon
+	/*
 	use ff::Field;
 	use rand::rngs::OsRng;
 	let mut csprng: OsRng = OsRng;
@@ -137,6 +135,7 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 	//for i in 0..num_absorbs {
 	//    // ro.absorb(z_out[i]);
 	//}
+	*/
 
 	// sanity check with the hasher
 	let mut hasher = Sha256::new();
@@ -159,9 +158,9 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 		    panic!("Can't reach here")
 		}
 	    }
-	}
+        }
 
-	println!("z_out length {:?}", z_out.len());
+	// println!("z_out length {:?}", z_out.len());
 	Ok(z_out)
     }
 
@@ -225,17 +224,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
       "Number of variables per step (secondary circuit): {}",
       pp.num_variables().1
     );
-    /*
-    let num_steps = 10;
-    let sha256_circuits = (0..num_steps)
-        .map(|_| Sha256Circuit {
-	    preimage: vec![0u8; 64],
-	    digest: bytes_to_scalar(hex!(
-		"12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
-	    )),	    
-      })
-    .collect::<Vec<_>>();
-    */
+    
     // Error (Goal 1: produce SNARK for multiple steps)
     let mut group = c.benchmark_group(format!("NovaProve-Sha256-message-len-{}", circuit_primary.preimage.len()));
     group.sample_size(10);
