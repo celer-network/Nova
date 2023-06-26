@@ -27,6 +27,7 @@ use nova_snark::{
 use sha2::{Digest, Sha256};
 use criterion::*;
 use core::time::Duration;
+use std::time::Instant;
 
 // use crate::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
 use nova_snark::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
@@ -44,7 +45,7 @@ use neptune::{
 use nova_snark::provider::poseidon::PoseidonRO;
 use nova_snark::provider::poseidon::PoseidonConstantsCircuit;
 
-const NITERATIONS: usize = 1;
+const NITERATIONS: usize = 2;
 
 #[derive(Clone, Debug)]
 struct Sha256CircuitOrig<Scalar: PrimeField> {
@@ -197,11 +198,6 @@ fn bench_recursive_snark(c: &mut Criterion) {
 	    )); NITERATIONS as usize],
 	};
 
-    // let vec = vec![0; 5];
-    
-//    let mut group = c.benchmark_group(format!("NovaProve-Sha256-message-len-{}", circuit_primary.preimage.len()));
-//    group.sample_size(10);
-
     // Produce public parameters
     let pp = PublicParams::<G1, G2, C1, C2>::setup(
 	circuit_primary.clone(),
@@ -225,22 +221,41 @@ fn bench_recursive_snark(c: &mut Criterion) {
       pp.num_variables().1
     );
     
-    // Error (Goal 1: produce SNARK for multiple steps)
-    let mut group = c.benchmark_group(format!("NovaProve-Sha256-message-len-{}", circuit_primary.preimage.len()));
-    group.sample_size(10);
-    group.bench_function("Prove", |b| {
-	b.iter(|| {
-	    // produce a recursive SNARK for a step of the recursion
-	    assert!(RecursiveSNARK::prove_step(
+    // (Goal 1: produce SNARK for multiple steps)
+    let num_steps = 10;
+    let sha256_circuits = (0..num_steps)
+	.map(|_| Sha256Circuit{
+		 preimage: vec![0u8; 64 * (NITERATIONS as usize)],
+		 digest: vec![bytes_to_scalar(hex!(
+		     "12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
+		 )); NITERATIONS as usize],
+	     }).collect::<Vec<_>>(); 
+
+    // produce a recursive SNARK
+    println!("Generating a RecursiveSNARK...");
+    let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
+    
+    for (i, circuit_primary) in sha256_circuits.iter().take(num_steps).enumerate() {
+	let start = Instant::now();
+	let res = RecursiveSNARK::prove_step
+	    (
 		black_box(&pp),
 		black_box(None),
 		black_box(circuit_primary.clone()),
 		black_box(TrivialTestCircuit::default()),
 		black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
 		black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
-	    )
-		    .is_ok());
-	})
-    });
-    group.finish();
+	    );
+      assert!(res.is_ok());
+      println!(
+        "RecursiveSNARK::prove_step {}: {:?}, took {:?} ",
+        i,
+        res.is_ok(),
+        start.elapsed()
+      );
+      recursive_snark = Some(res.unwrap());
+    }
+
+    
+    
 }
