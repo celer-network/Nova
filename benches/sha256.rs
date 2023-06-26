@@ -17,19 +17,21 @@ use ::bellperson::{
 };
 use ff::{PrimeField, PrimeFieldBits};
 use hex_literal::hex;
+use flate2::{write::ZlibEncoder, Compression};
 use nova_snark::{
   traits::{
     circuit::{StepCircuit, TrivialTestCircuit},
     Group,
   },
-  PublicParams, RecursiveSNARK,
+  CompressedSNARK, PublicParams, RecursiveSNARK,
 };
 use sha2::{Digest, Sha256};
 use criterion::*;
 use core::time::Duration;
 use std::time::Instant;
 
-// use crate::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
+// Imports related to Poseidon hash function (unused for now)
+/*
 use nova_snark::traits::{ROCircuitTrait, ROConstantsTrait, ROTrait};
 use generic_array::typenum::U24;
 use neptune::{
@@ -44,19 +46,28 @@ use neptune::{
 };
 use nova_snark::provider::poseidon::PoseidonRO;
 use nova_snark::provider::poseidon::PoseidonConstantsCircuit;
+ */
 
-const NITERATIONS: usize = 2;
+// Number if iterations of the sha256 function implemented by the
+// gadget
+const NITERATIONS: usize = 4;
+// Number of Nova steps (resp. foldings) over which we are producing
+// the final Nova proof
+const NSTEPS: usize = 10;
 
+/*
 #[derive(Clone, Debug)]
 struct Sha256CircuitOrig<Scalar: PrimeField> {
   preimage: Vec<u8>,
   digest: Scalar,
 }
+*/
 
 #[derive(Clone, Debug)]
 struct Sha256Circuit<Scalar: PrimeField> {
   preimage: Vec<u8>,
-  digest: Vec<Scalar>,
+  // digest: Vec<Scalar>,
+  digest: Scalar,
 }
 
 impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<Scalar> {
@@ -88,17 +99,10 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 	let niterations: usize = NITERATIONS;
 	let hash_bits = sha256iterated(cs.namespace(|| "sha256"), &preimage_bits, niterations)?;
 
-	// println!("hash_bits length {:?}", hash_bits.len());
-
-	let i: usize = 0;
-	let hash_bits_slice = &hash_bits[i];
-	
-	//for (i, hash_bits_slice) in hash_bits_slice.chunks(256_usize).enumerate() {
-	//for i in hash_bits_slice.chunks(1_usize).enumerate()
-	{	    
+	for (i, hash_bits) in hash_bits.chunks(256_usize).enumerate() {
 	    let mut num = Num::<Scalar>::zero();
 	    let mut coeff = Scalar::one();
-	    for bit in hash_bits_slice {
+	    for bit in hash_bits {
 		num = num.add_bool_with_coeff(CS::one(), bit, coeff);
 
 		coeff = coeff.double();
@@ -116,38 +120,23 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 		|lc| lc + hash.get_variable(),
 	    );
 	    z_out.push(hash);
-	}
+	}	
 
-	// apply Poseidon
-	/*
-	use ff::Field;
-	use rand::rngs::OsRng;
-	let mut csprng: OsRng = OsRng;
-	type S = pasta_curves::pallas::Scalar;
-	type B = pasta_curves::vesta::Scalar;
-	type G = pasta_curves::pallas::Point;
-        let constants = PoseidonConstantsCircuit::new();
-	// let num_absorbs = 32;
-	// let num_absorbs = 1;//z_out.len();
-	let num_absorbs = z_out.len();
-	let mut ro: PoseidonRO<S, B> = PoseidonRO::new(constants.clone(), num_absorbs);
-	// Error (Goal 3: add Poseidon)
-	// ro.absorb(z_out[0]);
-	//for i in 0..num_absorbs {
-	//    // ro.absorb(z_out[i]);
-	//}
-	*/
-
-	// sanity check with the hasher
+	// sanity check with the hasher Prepare a zero vector of 64
+	// bytes. Note: we are not using &self.preimage member of the
+	// gadget as it represents a vector of zero 64-byte vectors
+	let preimage = vec![0u8; 64];
+		
 	let mut hasher = Sha256::new();
-	hasher.update(&self.preimage);
+	// hasher.update(&self.preimage);
+	hasher.update(preimage);
 	let hash_result = hasher.finalize();
 
 	let mut s = hash_result
 	    .iter()
 	    .flat_map(|&byte| (0..8).rev().map(move |i| (byte >> i) & 1u8 == 1u8));
 
-	for b in hash_bits_slice {
+	for b in &hash_bits {
 	    match b {
 		Boolean::Is(b) => {
 		    assert!(s.next().unwrap() == b.get_value().unwrap());
@@ -159,15 +148,15 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 		    panic!("Can't reach here")
 		}
 	    }
-        }
-
+	}
+	
 	// println!("z_out length {:?}", z_out.len());
 	Ok(z_out)
     }
 
     fn output(&self, _z: &[Scalar]) -> Vec<Scalar> {
-	//vec![self.digest]
-	self.digest.clone()
+	vec![self.digest]
+	//self.digest.clone()
     }
 }
 
@@ -182,20 +171,22 @@ targets = bench_recursive_snark
 
 criterion_main!(recursive_snark);
 
-fn bench_recursive_snark(c: &mut Criterion) {
+fn bench_recursive_snark(_c: &mut Criterion) {
+    println!("=========================================================");
+    
     let bytes_to_scalar = |bytes: [u8; 32]| -> <G1 as Group>::Scalar {
 	let mut bytes_le = bytes;
 	bytes_le.reverse();
 	<G1 as Group>::Scalar::from_repr(bytes_le).unwrap()
     };
 
-    // Test vectors
+    // return single hash
     let circuit_primary =
 	Sha256Circuit {
 	    preimage: vec![0u8; 64 * (NITERATIONS as usize)],
-	    digest: vec![bytes_to_scalar(hex!(
+	    digest: bytes_to_scalar(hex!(
 		"12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
-	    )); NITERATIONS as usize],
+	    )),
 	};
 
     // Produce public parameters
@@ -221,17 +212,17 @@ fn bench_recursive_snark(c: &mut Criterion) {
       pp.num_variables().1
     );
     
-    // (Goal 1: produce SNARK for multiple steps)
-    let num_steps = 10;
+    // Produce SNARK for multiple steps
+    let num_steps = NSTEPS;
     let sha256_circuits = (0..num_steps)
 	.map(|_| Sha256Circuit{
-		 preimage: vec![0u8; 64 * (NITERATIONS as usize)],
-		 digest: vec![bytes_to_scalar(hex!(
-		     "12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
-		 )); NITERATIONS as usize],
-	     }).collect::<Vec<_>>(); 
+	    preimage: vec![0u8; 64 * (NITERATIONS as usize)],
+	    digest: bytes_to_scalar(hex!(
+		"12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
+	    )),
+	}).collect::<Vec<_>>(); 
 
-    // produce a recursive SNARK
+    // Produce a recursive SNARK
     println!("Generating a RecursiveSNARK...");
     let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
     
@@ -240,7 +231,8 @@ fn bench_recursive_snark(c: &mut Criterion) {
 	let res = RecursiveSNARK::prove_step
 	    (
 		black_box(&pp),
-		black_box(None),
+		//black_box(None),
+                recursive_snark,
 		black_box(circuit_primary.clone()),
 		black_box(TrivialTestCircuit::default()),
 		black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
@@ -256,6 +248,56 @@ fn bench_recursive_snark(c: &mut Criterion) {
       recursive_snark = Some(res.unwrap());
     }
 
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
     
+    // verify the recursive SNARK
+    println!("Verifying a RecursiveSNARK...");
+    let start = Instant::now();
+    let res = recursive_snark.verify(&pp, num_steps, black_box(vec![<G1 as Group>::Scalar::from(2u64)]), black_box(vec![<G2 as Group>::Scalar::from(2u64)]));
+    println!(
+      "RecursiveSNARK::verify: {:?}, took {:?}",
+      res.is_ok(),
+      start.elapsed()
+    );
+    assert!(res.is_ok());
     
+    // produce a compressed SNARK
+    println!("Generating a CompressedSNARK using Spartan with IPA-PC...");
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
+    
+    let start = Instant::now();
+    type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
+    type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
+    type S1 = nova_snark::spartan::RelaxedR1CSSNARK<G1, EE1>;
+    type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2>;
+
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
+    println!(
+      "CompressedSNARK::prove: {:?}, took {:?}",
+      res.is_ok(),
+      start.elapsed()
+    );
+    assert!(res.is_ok());
+    let compressed_snark = res.unwrap();
+    
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
+    let compressed_snark_encoded = encoder.finish().unwrap();
+    println!(
+      "CompressedSNARK::len {:?} bytes",
+      compressed_snark_encoded.len()
+    );
+    
+    // verify the compressed SNARK
+    println!("Verifying a CompressedSNARK...");
+    let start = Instant::now();
+    let res = compressed_snark.verify(&vk, num_steps, black_box(vec![<G1 as Group>::Scalar::from(2u64)]), black_box(vec![<G2 as Group>::Scalar::from(2u64)]));
+    println!(
+      "CompressedSNARK::verify: {:?}, took {:?}",
+      res.is_ok(),
+      start.elapsed()
+    );
+    assert!(res.is_ok());
+    println!("=========================================================");
 }
