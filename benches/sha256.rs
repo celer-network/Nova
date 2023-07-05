@@ -50,7 +50,7 @@ use nova_snark::provider::poseidon::PoseidonConstantsCircuit;
 
 // Number if iterations of the sha256 function implemented by the
 // gadget
-const NITERATIONS: usize = 4;
+const NITERATIONS: usize = 100;
 // Number of Nova steps (resp. foldings) over which we are producing
 // the final Nova proof
 const NSTEPS: usize = 10;
@@ -173,6 +173,8 @@ criterion_main!(recursive_snark);
 
 fn bench_recursive_snark(_c: &mut Criterion) {
     println!("=========================================================");
+    println!("{NITERATIONS} non-recursive SHA256 iterations");
+    println!("{NSTEPS} Nova steps");
     
     let bytes_to_scalar = |bytes: [u8; 32]| -> <G1 as Group>::Scalar {
 	let mut bytes_le = bytes;
