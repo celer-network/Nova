@@ -173,13 +173,13 @@ fn bench_recursive_snark(c: &mut Criterion) {
       digest: bytes_to_scalar(hex!(
         "35c18d6c3cf49e42b3ffcb54ea04bdc16617efba0e673abc8c858257955005a5"
       )),
-    },
+    },*/
     Sha256Circuit {
       preimage: vec![0u8; 4096],
       digest: bytes_to_scalar(hex!(
         "25349112d1bd5ba15e3e2d3effa01af1da02c097ce6208cdf28f34b74d35feb2"
       )),
-    },
+    },/*
     Sha256Circuit {
       preimage: vec![0u8; 8192],
       digest: bytes_to_scalar(hex!(
@@ -191,7 +191,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
       digest: bytes_to_scalar(hex!(
         "3fda713dc72ddcd42ce625c75f7e41d526d30647278a3dfcda95904e59ade7f1"
       )),
-    },*/
+    },
     
     Sha256Circuit {
       preimage: vec![0u8; 32768],
@@ -204,13 +204,15 @@ fn bench_recursive_snark(c: &mut Criterion) {
       digest: bytes_to_scalar(hex!(
         "0c33953975c438ce357912f27b0fbcf98bae6eb68a1a913386672ee406a4f479"
       )),
-    },
+    },*/
   ];
 
 
   for circuit_primary in circuits {
     let mut group = c.benchmark_group(format!("NovaProve-Sha256-message-len-{}", circuit_primary.preimage.len()));
     group.sample_size(10);
+
+    let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
 
     // Produce public parameters
     let pp = PublicParams::<G1, G2, C1, C2>::setup(
@@ -223,7 +225,7 @@ fn bench_recursive_snark(c: &mut Criterion) {
         // produce a recursive SNARK for a step of the recursion
         assert!(RecursiveSNARK::prove_step(
           black_box(&pp),
-          black_box(None),
+          black_box(recursive_snark.clone()),
           black_box(circuit_primary.clone()),
           black_box(TrivialTestCircuit::default()),
           black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
@@ -232,6 +234,23 @@ fn bench_recursive_snark(c: &mut Criterion) {
         .is_ok());
       })
     });
+
+    let recursive_snark = recursive_snark.unwrap();
+
+    // Benchmark the verification time
+    group.bench_function("Verify", |b| {
+      b.iter(|| {
+        assert!(black_box(&recursive_snark)
+          .verify(
+            black_box(&pp),
+            black_box(1),
+            black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
+            black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
+          )
+          .is_ok());
+      });
+    });
+
     group.finish();
   }
 }
