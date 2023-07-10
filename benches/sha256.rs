@@ -48,11 +48,17 @@ use nova_snark::provider::poseidon::PoseidonRO;
 use nova_snark::provider::poseidon::PoseidonConstantsCircuit;
  */
 
+// let N = vec![13, 25, 50, 100];
+
 // Number if iterations of the sha256 function implemented by the
 // gadget
-const NITERATIONS: usize = 100;
+const NITERATIONS: usize = 13;
+//const NITERATIONS: usize = 25;
+//const NITERATIONS: usize = 50;
+//const NITERATIONS: usize = 100;
 // Number of Nova steps (resp. foldings) over which we are producing
 // the final Nova proof
+//const NSTEPS: usize = 10;
 const NSTEPS: usize = 10;
 
 /*
@@ -80,7 +86,6 @@ impl<Scalar: PrimeField + PrimeFieldBits> StepCircuit<Scalar> for Sha256Circuit<
 	cs: &mut CS,
 	_z: &[AllocatedNum<Scalar>],
     ) -> Result<Vec<AllocatedNum<Scalar>>, SynthesisError> {
-
 	assert_eq!(self.preimage.len(), 64 * (NITERATIONS as usize));
 	
 	let mut z_out: Vec<AllocatedNum<Scalar>> = Vec::new();
@@ -180,133 +185,130 @@ fn bench_recursive_snark(_c: &mut Criterion) {
     };
 
     // NITERATIONS
-    let N = vec![13, 25, 50, 100];
+    // let N = vec![13, 25, 50, 100];
+    
+    println!("=========================================================");
+    println!("{NITERATIONS} non-recursive SHA256 iterations");
+    println!("{NSTEPS} Nova steps");
+    
+    // return single hash
+    let circuit_primary =
+	Sha256Circuit {
+	    preimage: vec![0u8; 64 * (NITERATIONS as usize)],
+	    digest: bytes_to_scalar(hex!(
+		"12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
+	    )),
+	};
 
-    for niterations in N {
-	
-	println!("=========================================================");
-	println!("{NITERATIONS} non-recursive SHA256 iterations");
-	println!("{NSTEPS} Nova steps");
-	
-	// return single hash
-	let circuit_primary =
-	    Sha256Circuit {
-		preimage: vec![0u8; 64 * (niterations as usize)],
-		digest: bytes_to_scalar(hex!(
-		    "12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
-		)),
-	    };
+    // Produce public parameters
+    let pp = PublicParams::<G1, G2, C1, C2>::setup(
+	circuit_primary.clone(),
+	TrivialTestCircuit::default(),
+    );
+    println!(
+	"Number of constraints per step (primary circuit): {}",
+	pp.num_constraints().0
+    );
+    println!(
+	"Number of constraints per step (secondary circuit): {}",
+	pp.num_constraints().1
+    );
 
-	// Produce public parameters
-	let pp = PublicParams::<G1, G2, C1, C2>::setup(
-	    circuit_primary.clone(),
-	    TrivialTestCircuit::default(),
-	);
-	println!(
-	    "Number of constraints per step (primary circuit): {}",
-	    pp.num_constraints().0
-	);
-	println!(
-	    "Number of constraints per step (secondary circuit): {}",
-	    pp.num_constraints().1
-	);
+    println!(
+	"Number of variables per step (primary circuit): {}",
+	pp.num_variables().0
+    );
+    println!(
+	"Number of variables per step (secondary circuit): {}",
+	pp.num_variables().1
+    );
+    
+    // Produce SNARK for multiple steps
+    let num_steps = NSTEPS;
+    let sha256_circuits = (0..num_steps)
+	.map(|_| Sha256Circuit{
+	    preimage: vec![0u8; 64 * (NITERATIONS as usize)],
+	    digest: bytes_to_scalar(hex!(
+		"12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
+	    )),
+	}).collect::<Vec<_>>(); 
 
-	println!(
-	    "Number of variables per step (primary circuit): {}",
-	    pp.num_variables().0
-	);
-	println!(
-	    "Number of variables per step (secondary circuit): {}",
-	    pp.num_variables().1
-	);
-	
-	// Produce SNARK for multiple steps
-	let num_steps = NSTEPS;
-	let sha256_circuits = (0..num_steps)
-	    .map(|_| Sha256Circuit{
-		preimage: vec![0u8; 64 * (NITERATIONS as usize)],
-		digest: bytes_to_scalar(hex!(
-		    "12df9ae4958c1957170f9b04c4bc00c27315c5d75a391f4b672f952842bfa5ac"
-		)),
-	    }).collect::<Vec<_>>(); 
-
-	// Produce a recursive SNARK
-	println!("Generating a RecursiveSNARK...");
-	let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
-	
-	for (i, circuit_primary) in sha256_circuits.iter().take(num_steps).enumerate() {
-	    let start = Instant::now();
-	    let res = RecursiveSNARK::prove_step
-		(
-		    black_box(&pp),
-		    //black_box(None),
-                    recursive_snark,
-		    black_box(circuit_primary.clone()),
-		    black_box(TrivialTestCircuit::default()),
-		    black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
-		    black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
-		);
-	    assert!(res.is_ok());
-	    println!(
-		"RecursiveSNARK::prove_step {}: {:?}, took {:?} ",
-		i,
-		res.is_ok(),
-		start.elapsed()
+    // Produce a recursive SNARK
+    println!("Generating a RecursiveSNARK...");
+    let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
+    
+    for (i, circuit_primary) in sha256_circuits.iter().take(num_steps).enumerate() {
+	let start = Instant::now();
+	let res = RecursiveSNARK::prove_step
+	    (
+		black_box(&pp),
+		//black_box(None),
+                recursive_snark,
+		black_box(circuit_primary.clone()),
+		black_box(TrivialTestCircuit::default()),
+		black_box(vec![<G1 as Group>::Scalar::from(2u64)]),
+		black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
 	    );
-	    recursive_snark = Some(res.unwrap());
-	}
-
-	assert!(recursive_snark.is_some());
-	let recursive_snark = recursive_snark.unwrap();
-	
-	// verify the recursive SNARK
-	println!("Verifying a RecursiveSNARK...");
-	let start = Instant::now();
-	let res = recursive_snark.verify(&pp, num_steps, black_box(vec![<G1 as Group>::Scalar::from(2u64)]), black_box(vec![<G2 as Group>::Scalar::from(2u64)]));
+	assert!(res.is_ok());
 	println!(
-	    "RecursiveSNARK::verify: {:?}, took {:?}",
+	    "RecursiveSNARK::prove_step {}: {:?}, took {:?} ",
+	    i,
 	    res.is_ok(),
 	    start.elapsed()
 	);
-	assert!(res.is_ok());
-	
-	// produce a compressed SNARK
-	println!("Generating a CompressedSNARK using Spartan with IPA-PC...");
-	let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
-	
-	let start = Instant::now();
-	type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
-	type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
-	type S1 = nova_snark::spartan::RelaxedR1CSSNARK<G1, EE1>;
-	type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2>;
-
-	let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
-	println!(
-	    "CompressedSNARK::prove: {:?}, took {:?}",
-	    res.is_ok(),
-	    start.elapsed()
-	);
-	assert!(res.is_ok());
-	let compressed_snark = res.unwrap();
-	
-	let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
-	bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
-	let compressed_snark_encoded = encoder.finish().unwrap();
-	println!(
-	    "CompressedSNARK::len {:?} bytes",
-	    compressed_snark_encoded.len()
-	);
-	
-	// verify the compressed SNARK
-	println!("Verifying a CompressedSNARK...");
-	let start = Instant::now();
-	let res = compressed_snark.verify(&vk, num_steps, black_box(vec![<G1 as Group>::Scalar::from(2u64)]), black_box(vec![<G2 as Group>::Scalar::from(2u64)]));
-	println!(
-	    "CompressedSNARK::verify: {:?}, took {:?}",
-	    res.is_ok(),
-	    start.elapsed()
-	);
-	assert!(res.is_ok());
-	println!("=========================================================");
+	recursive_snark = Some(res.unwrap());
     }
+
+    assert!(recursive_snark.is_some());
+    let recursive_snark = recursive_snark.unwrap();
+    
+    // verify the recursive SNARK
+    println!("Verifying a RecursiveSNARK...");
+    let start = Instant::now();
+    let res = recursive_snark.verify(&pp, num_steps, black_box(vec![<G1 as Group>::Scalar::from(2u64)]), black_box(vec![<G2 as Group>::Scalar::from(2u64)]));
+    println!(
+	"RecursiveSNARK::verify: {:?}, took {:?}",
+	res.is_ok(),
+	start.elapsed()
+    );
+    assert!(res.is_ok());
+    
+    // produce a compressed SNARK
+    println!("Generating a CompressedSNARK using Spartan with IPA-PC...");
+    let (pk, vk) = CompressedSNARK::<_, _, _, _, S1, S2>::setup(&pp).unwrap();
+    
+    let start = Instant::now();
+    type EE1 = nova_snark::provider::ipa_pc::EvaluationEngine<G1>;
+    type EE2 = nova_snark::provider::ipa_pc::EvaluationEngine<G2>;
+    type S1 = nova_snark::spartan::RelaxedR1CSSNARK<G1, EE1>;
+    type S2 = nova_snark::spartan::RelaxedR1CSSNARK<G2, EE2>;
+
+    let res = CompressedSNARK::<_, _, _, _, S1, S2>::prove(&pp, &pk, &recursive_snark);
+    println!(
+	"CompressedSNARK::prove: {:?}, took {:?}",
+	res.is_ok(),
+	start.elapsed()
+    );
+    assert!(res.is_ok());
+    let compressed_snark = res.unwrap();
+    
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    bincode::serialize_into(&mut encoder, &compressed_snark).unwrap();
+    let compressed_snark_encoded = encoder.finish().unwrap();
+    println!(
+	"CompressedSNARK::len {:?} bytes",
+	compressed_snark_encoded.len()
+    );
+    
+    // verify the compressed SNARK
+    println!("Verifying a CompressedSNARK...");
+    let start = Instant::now();
+    let res = compressed_snark.verify(&vk, num_steps, black_box(vec![<G1 as Group>::Scalar::from(2u64)]), black_box(vec![<G2 as Group>::Scalar::from(2u64)]));
+    println!(
+	"CompressedSNARK::verify: {:?}, took {:?}",
+	res.is_ok(),
+	start.elapsed()
+    );
+    assert!(res.is_ok());
+    println!("=========================================================");
 }
