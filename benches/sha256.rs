@@ -52,10 +52,14 @@ use nova_snark::provider::poseidon::PoseidonConstantsCircuit;
 
 // Number if iterations of the sha256 function implemented by the
 // gadget
-const NITERATIONS: usize = 13;
-//const NITERATIONS: usize = 25;
-//const NITERATIONS: usize = 50;
-//const NITERATIONS: usize = 100;
+const NITERATIONS: usize = 1;     // 1KB
+//const NITERATIONS: usize = 2;   // 2KB
+//const NITERATIONS: usize = 3;   // 4KB
+//const NITERATIONS: usize = 6;   // 8KB
+//const NITERATIONS: usize = 13;  // 16KB
+//const NITERATIONS: usize = 25;  // 32KB
+//const NITERATIONS: usize = 50;  // 64KB
+//const NITERATIONS: usize = 100; // 128KB
 // Number of Nova steps (resp. foldings) over which we are producing
 // the final Nova proof
 //const NSTEPS: usize = 10;
