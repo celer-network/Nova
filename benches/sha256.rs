@@ -240,7 +240,8 @@ fn bench_recursive_snark(_c: &mut Criterion) {
     // Produce a recursive SNARK
     println!("Generating a RecursiveSNARK...");
     let mut recursive_snark: Option<RecursiveSNARK<G1, G2, C1, C2>> = None;
-    
+
+    let mut prove_step_time: u128 = 0;
     for (i, circuit_primary) in sha256_circuits.iter().take(num_steps).enumerate() {
 	let start = Instant::now();
 	let res = RecursiveSNARK::prove_step
@@ -254,14 +255,17 @@ fn bench_recursive_snark(_c: &mut Criterion) {
 		black_box(vec![<G2 as Group>::Scalar::from(2u64)]),
 	    );
 	assert!(res.is_ok());
+	let step_time: u128 = start.elapsed().as_millis();
 	println!(
 	    "RecursiveSNARK::prove_step {}: {:?}, took {:?} ",
 	    i,
 	    res.is_ok(),
-	    start.elapsed()
+	    start.elapsed(),
 	);
 	recursive_snark = Some(res.unwrap());
+	prove_step_time += step_time;
     }
+    println!("RecursiveSNARK all prove steps took ~{:?} sec", prove_step_time);
 
     assert!(recursive_snark.is_some());
     let recursive_snark = recursive_snark.unwrap();
