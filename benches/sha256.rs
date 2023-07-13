@@ -64,9 +64,61 @@ use nova_snark::provider::poseidon::PoseidonConstantsCircuit;
 // the final Nova proof
 //const NSTEPS: usize = 10;
 
+// 30KB experiments: SHA2 execution x Nova steps
+//  2x120
+const NITERATIONS: usize = 2;
+const NSTEPS: usize = 120;
+//  3x80
+//const NITERATIONS: usize = 3;
+//const NSTEPS: usize = 80;
+//  4x60
+//const NITERATIONS: usize = 4;
+//const NSTEPS: usize = 60;
+//  6x40
+//const NITERATIONS: usize = 6;
+//const NSTEPS: usize = 40;
+// 8x30
+//const NITERATIONS: usize = 8;
+//const NSTEPS: usize = 30;
+// 10x24
+//const NITERATIONS: usize = 10;
+//const NSTEPS: usize = 24;
+// 12x20
+//const NITERATIONS: usize = 12;
+//const NSTEPS: usize = 20;
+// 15x16
+//const NITERATIONS: usize = 15;
+//const NSTEPS: usize = 16;
+
+// 30KB experiments swaps
+//  120x2
+//const NITERATIONS: usize = 120;
+//const NSTEPS: usize = 2;
+//  80x3
+//const NITERATIONS: usize = 80;
+//const NSTEPS: usize = 3;
+//  60x4
+//const NITERATIONS: usize = 60;
+//const NSTEPS: usize = 4;
+//  40x6
+//const NITERATIONS: usize = 40;
+//const NSTEPS: usize = 6;
+// 30x8
+//const NITERATIONS: usize = 30;
+//const NSTEPS: usize = 8;
+// 24x10
+//const NITERATIONS: usize = 24;
+//const NSTEPS: usize = 10;
+// 20x12
+//const NITERATIONS: usize = 20;
+//const NSTEPS: usize = 12;
+// 16x15
+//const NITERATIONS: usize = 16;
+//const NSTEPS: usize = 15;
+
 // 32KB with N = 25 and k = 10
-const NITERATIONS: usize = 10;
-const NSTEPS: usize = 25;
+//const NITERATIONS: usize = 10;
+//const NSTEPS: usize = 25;
 
 /*
 #[derive(Clone, Debug)]
@@ -268,7 +320,7 @@ fn bench_recursive_snark(_c: &mut Criterion) {
 	recursive_snark = Some(res.unwrap());
 	prove_step_time += step_time;
     }
-    println!("RecursiveSNARK all prove steps took ~{:?} sec", prove_step_time);
+    println!("RecursiveSNARK all prove steps took ~{:?} ms", prove_step_time);
 
     assert!(recursive_snark.is_some());
     let recursive_snark = recursive_snark.unwrap();
